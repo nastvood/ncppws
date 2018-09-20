@@ -14,7 +14,7 @@ void NWSClient::addData(char *data, int len) {
     this->buf.clear();
   }
 
-  buf.insert(buf.end(), &data[0], &data[len - 1]);
+  buf.insert(buf.end(), &data[0], &data[len]);
   
   this->isDoneData = false;       
 };

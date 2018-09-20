@@ -9,9 +9,15 @@
 
     socket.onopen = function() {
       console.log("Соединение установлено.");
-    	socket.send("Hello world");
+    	socket.send("Hello");
     };
 
+    function send() {
+      socket.send(document.getElementById("send-input").value);
+    }
 
   </script>
+
+  <input id="send-input"></input>
+  <button onclick="send()">Send</button>
 </html>

@@ -40,15 +40,19 @@ NWSFrame::NWSFrame(const char *buf) {
     this->maskKey[3] = buf[offset++];
   }  
 
+  this->data = new char[this->len];
+   
   for (uint64_t i = 0; i < this->len; ++i) {
-    char c = (buf[offset + i] ^ this->maskKey[i % 4]);
-    cout<<c<<endl;
-    //printf("\nlen %x\n", c);
-
+    char c = buf[offset++];
+    this->data[i] = this->mask ? c ^ this->maskKey[i % 4] : c; 
   }
 
   printf("\n%02x\n", (unsigned int)(unsigned char)c);
 };
+
+NWSFrame::~NWSFrame() {
+  if (this->data) delete[] this->data;
+}
 
 void NWSFrame::print() {
   cout<<endl;
@@ -56,5 +60,13 @@ void NWSFrame::print() {
   cout<<"opcode:"<<hex<<(unsigned int)this->opcode<<dec<<endl;
   cout<<"mask:"<<boolalpha<<this->mask<<noboolalpha<<endl;
   cout<<"len:"<<this->len<<endl;
-  //cout<<"maskKey:"<<hex<<(unsigned int)this->maskKey<<dec<<endl;
+  
+  cout<<"maskKey:"<<hex
+    <<(unsigned int)(unsigned char)this->maskKey[0]<<" "
+    <<(unsigned int)(unsigned char)this->maskKey[1]<<" "
+    <<(unsigned int)(unsigned char)this->maskKey[2]<<" "
+    <<(unsigned int)(unsigned char)this->maskKey[3]
+    <<dec<<endl;
+
+  cout<<"data:"<<this->data<<endl;
 }
