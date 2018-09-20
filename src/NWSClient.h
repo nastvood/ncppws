@@ -7,6 +7,7 @@
 
 #include "wshelper.h" 
 #include "wscrypto.h" 
+#include "NWSFrame.h"
 
 class NWSClient {
   public:

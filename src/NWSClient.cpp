@@ -24,22 +24,29 @@ char *NWSClient::data() {
 }
 
 void NWSClient::parseHeader() {
-  auto p = split(this->data(), "\r\n\r\n"); 
-  auto headers = nsplit(p.first, "\r\n");
+  if (this->state == AwaitingHandshake) {
+    auto p = split(this->data(), "\r\n\r\n"); 
+    auto headers = nsplit(p.first, "\r\n");
 
-  if (headers.size() == 1) {
-    //FIXME разбор Request-Line 
-  } else if(headers.size() > 1) {
-    //FIXME разбор Request-Line 
-    for(auto h = headers.begin() + 1; h != headers.end(); ++h) {
-      auto kv = split(*h, ":"); 
-      string k = lower(trim(kv.first));
-      string v = trim(kv.second);
-      if (!(k.empty() || (k == ""))) {
-				this->header.insert({k, v});
-        cout<<k<<"///"<<v<<endl;
+    if (headers.size() == 1) {
+      //FIXME разбор Request-Line 
+    } else if(headers.size() > 1) {
+      //FIXME разбор Request-Line 
+      for(auto h = headers.begin() + 1; h != headers.end(); ++h) {
+        auto kv = split(*h, ":"); 
+        string k = lower(trim(kv.first));
+        string v = trim(kv.second);
+        if (!(k.empty() || (k == ""))) {
+    			this->header.insert({k, v});
+          cout<<k<<"///"<<v<<endl;
+        }
       }
     }
+  } else if (this->state == Connected) {
+    NWSFrame *frame = new NWSFrame(this->data());   
+    frame->print();
+
+    delete frame;
   }
 }
 
