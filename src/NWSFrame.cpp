@@ -5,7 +5,35 @@ NWSFrame::NWSFrame(const char *buf) {
 
   char c = buf[offset++];  
   this->fin = c >> 7;
-  this->opcode = c & 0x0F;
+
+  switch (c & 0x0F) {
+    case 0x0:
+      this->opcode = Continuation;
+      break;
+
+    case 0x1:      
+      this->opcode = Text;
+      break;
+
+    case 0x2:      
+      this->opcode = Binary;
+      break;
+
+    case 0x8:      
+      this->opcode = Close; //2 bytes data
+      break;
+
+    case 0x9:      
+      this->opcode = Ping;
+      break;
+
+    case 0xa:      
+      this->opcode = Pong;
+      break;
+
+    default:
+      this->opcode = Other;      
+  }
 
   c = buf[offset++];
   this->mask = c >> 7;
@@ -14,23 +42,14 @@ NWSFrame::NWSFrame(const char *buf) {
   if (l <= 125) {
     this->len = l;
   } else if (l == 126) {
-    unsigned char h =  buf[offset++];
-    unsigned char l =  buf[offset++];
-
-    this->len = (h << 8) + l;
+    uint16_t *s = (uint16_t *)&buf[offset];
+    this->len = __builtin_bswap16(*s);
+    offset += 2;
 
   } else {
-    uint64_t w0 = buf[offset++];
-    uint64_t w1 = buf[offset++];
-    uint64_t w2 = buf[offset++];
-    uint64_t w3 = buf[offset++];
-    uint64_t w4 = buf[offset++];
-    uint64_t w5 = buf[offset++];
-    uint64_t w6 = buf[offset++];
-    uint64_t w7 = buf[offset++];
-
-    this->len = ((w0 << 56) & 0xFF00000000000000) + ((w1 << 48) & 0xFF000000000000) + ((w2 << 40) & 0xFF0000000000) + ((w3 << 32) & 0xFF00000000)
-                + ((w4 << 24) & 0xFF000000) + ((w5 << 16) & 0xFF0000) + ((w6 << 8) & 0xFF00) + (w7 & 0xFF); 
+    uint64_t *s = (uint64_t *)&buf[offset];
+    this->len = __builtin_bswap64(*s);
+    offset += 4;
   }
 
   if (this->mask) {
@@ -44,20 +63,100 @@ NWSFrame::NWSFrame(const char *buf) {
    
   for (uint64_t i = 0; i < this->len; ++i) {
     char c = buf[offset++];
-    this->data[i] = this->mask ? c ^ this->maskKey[i % 4] : c; 
+    this->data[i] = this->mask ? c ^ this->maskKey[i % MASK_KEY_LEN] : c; 
+  }
+
+  if (this->opcode == Close) {
+    uint16_t *s = (uint16_t *)&this->data[0];
+    this->closeCode = __builtin_bswap16(*s);
   }
 
   printf("\n%02x\n", (unsigned int)(unsigned char)c);
 };
 
+NWSFrame::NWSFrame(bool fin, Opcode opcode, bool mask, uint16_t len, char maskKey[MASK_KEY_LEN], const char *data, uint16_t closeCode = 0)
+  :fin(fin), opcode(opcode), mask(mask), len(len), closeCode(closeCode) {
+
+  memcpy(this->maskKey, maskKey, MASK_KEY_LEN);
+
+  this->data = new char[this->len];
+  memcpy(this->data, data, this->len);  
+
+}
+
 NWSFrame::~NWSFrame() {
   if (this->data) delete[] this->data;
+}
+
+NWSFrame NWSFrame::createClose(uint16_t closeCode) {
+  char maskKey[MASK_KEY_LEN] = {0};
+
+  uint16_t code = __builtin_bswap16(closeCode);
+  NWSFrame frame = NWSFrame(true, Close, false, CLOSE_DATA_LEN, maskKey, (char *)&code, closeCode);
+
+  return frame;      
+}
+
+uint64_t NWSFrame::packetSize() {
+  uint64_t size = 2;
+
+  if ((this->len > 125) && (this->len <= 0xFFFF)) size += 2;
+
+  if (this->len > 0xFFFF) size += 4;
+
+  if (this->mask) size += 4;
+
+  return size + this->len; 
+}
+
+size_t NWSFrame::generatePacket(char **retPacket) {
+  unsigned char *packet = new unsigned char[this->packetSize()]();
+
+  unsigned char firsByte = 0;  
+  if (this->fin) firsByte = firsByte | 0x80;
+  firsByte += ucharOfOpcode(this->opcode);
+
+  unsigned char secondByte = 0;
+  if (this->mask) secondByte = secondByte | 0x80;
+
+  unsigned char dataLen = 0;
+  size_t offset = 0;
+  if (this->len <= 125) {
+    dataLen = this->len;
+  } else if ((this->len > 125) && (this->len <= 0xFFFF))  {
+    dataLen = 126;
+    offset = 2;
+    uint16_t size = __builtin_bswap16((uint16_t) this->len);
+    memcpy(&packet[2], &size, offset);
+  } else if (this->len > 0xFFFF) {
+    dataLen = 126;
+    offset = 4;
+    uint64_t size = __builtin_bswap64(this->len);
+    memcpy(&packet[2], &size, offset);
+  } 
+  secondByte += dataLen;
+
+  packet[0] = firsByte;
+  packet[1] = secondByte;
+  offset += 2;
+
+  if (this->mask) {
+    for (uint64_t i = 0; i < this->len; ++i) {
+      packet[offset + i] = this->data[i] ^ this->maskKey[i % MASK_KEY_LEN];
+    }
+  } else {
+    memcpy((void *)&packet[offset], this->data, this->len); 
+  }
+
+  *retPacket = (char *)packet; 
+
+  return this->packetSize();
 }
 
 void NWSFrame::print() {
   cout<<endl;
   cout<<"fin:"<<boolalpha<<this->fin<<noboolalpha<<endl;
-  cout<<"opcode:"<<hex<<(unsigned int)this->opcode<<dec<<endl;
+  cout<<"opcode:"<<stringOfOpcode(this->opcode)<<endl;
   cout<<"mask:"<<boolalpha<<this->mask<<noboolalpha<<endl;
   cout<<"len:"<<this->len<<endl;
   
@@ -69,4 +168,58 @@ void NWSFrame::print() {
     <<dec<<endl;
 
   cout<<"data:"<<this->data<<endl;
+  cout<<"closeCode:"<<this->closeCode<<endl;
 }
+
+unsigned char NWSFrame::ucharOfOpcode(Opcode opcode) {
+  switch (opcode) {
+    case Continuation:
+      return 0x0;
+
+    case Text:
+      return 0x1;    
+
+    case Binary:      
+      return 0x2;    
+
+    case Close:      
+      return 0x8;    
+
+    case Ping:
+      return 0x9;
+          
+    case Pong:      
+      return 0xa;          
+
+    default:
+      return 0xB;
+  }
+}
+
+string NWSFrame::stringOfOpcode(Opcode opcode) {
+  switch (opcode) {
+    case Continuation:
+      return "Continuation";
+
+    case Text:
+      return "Text";    
+
+    case Binary:      
+      return "Binary";    
+
+    case Close:      
+      return "Close";    
+
+    case Ping:
+      return "Ping";
+          
+    case Pong:      
+      return "Pong";          
+
+    default:
+      return "Other";
+  }
+}
+
+
+

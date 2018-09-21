@@ -55,12 +55,10 @@ string NWSClient::genKey() {
 
 	string sha = sha1(sign);
 
-  cout<<sign<<";sha1"<<endl;
 	string tmp = sha;
 	for (char c : tmp) {
 		printf("%02x", (unsigned short) (unsigned char)c);
 	}
-  cout<<endl;
     
   return base64Encode(sha);  
 }
@@ -71,8 +69,6 @@ void NWSClient::setState(State s) {
 
 void NWSClient::setIsDone(bool isDone) {
   isDoneData = isDone;
-
-  //cout<<"---------------"<<endl<<this->data()<<"-------------------"<<endl;
 
   if (isDoneData) {
     this->header.clear();
@@ -87,6 +83,17 @@ string NWSClient::response() {
       + "\r\nUpgrade: websocket\r\n\r\n";
 
     return resp;          
+  } else if (this->state == Connected) {
+     NWSFrame frame = NWSFrame::createClose(1000); 
+     
+     char *packet = nullptr; 
+     size_t len = frame.generatePacket(&packet);
+
+     printf("packet %p\n", packet);
+     NWSFrame f = NWSFrame(packet);
+     f.print();
+
+     return string(packet, len);
   } else {
     return "";
   }
