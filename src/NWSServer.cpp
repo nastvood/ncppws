@@ -122,7 +122,7 @@ int NWSServer::eventLoop() {
             client -> addData(buf, count);
           }
 
-          if (((count == -1) && (errno != EAGAIN)) || (count == 0) || (count < len)) {
+          if (((count == -1) && (errno == EAGAIN)) || (count == 0)) {
             client->setIsDone(true);
 
             string resp = client->response();
