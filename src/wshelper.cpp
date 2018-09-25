@@ -78,3 +78,12 @@ string urlDecode(const string &value) {
 
   return res.str();
 }
+
+void printHexCString(char *c, size_t len) {
+	cout<<hex;
+	for (size_t i = 0; i < len; ++i) {
+		cout << (unsigned short)(unsigned char)c[i] << " ";
+	}
+
+	cout<<dec<<endl;
+}

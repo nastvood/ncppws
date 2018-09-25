@@ -54,3 +54,18 @@ string base64Decode(const string &in) {
 
   return out;
 }
+
+//https://wiki.openssl.org/index.php/Simple_TLS_Server
+void clientHello(char *c, size_t len) {
+  
+  SSL_load_error_strings();
+  (void)SSL_library_init();
+
+  const SSL_METHOD* method = SSLv23_method();
+  if(!(NULL != method)) perror("SSLv23_method\n");
+
+  SSL_CTX* ctx = SSL_CTX_new(method);
+  if(!(ctx != NULL)) perror("SSL_CTX_new\n");
+
+  SSL *ssl = SSL_new(ctx);  
+}

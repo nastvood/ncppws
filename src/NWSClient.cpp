@@ -25,6 +25,14 @@ char *NWSClient::data() {
 
 void NWSClient::parseHeader() {
   if (this->state == AwaitingHandshake) {
+		if (this->data()[0] == 0x16) {
+			printHexCString(this->data(), this->buf.size());
+
+			clientHello(this->data(), this->buf.size());			
+
+			return;
+		}		
+
     auto p = split(this->data(), "\r\n\r\n"); 
     auto headers = nsplit(p.first, "\r\n");
 
