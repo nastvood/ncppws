@@ -23,13 +23,11 @@ vector<string> nsplit(const string &s, const string &delimiter) {
     size_t pos = tmp.find(delimiter);
 
     if (pos == string::npos) {
-      cout<<"add---"<<tmp<<endl;
       res.push_back(tmp);
       break;
     }
 
     res.push_back(tmp.substr(0, pos));
-    cout<<"add---"<<tmp.substr(0, pos)<<endl;
     tmp = tmp.substr(pos + delimiter.length());
   }    
 
@@ -49,4 +47,34 @@ string lower(string const &s) {
   transform(tmp.begin(), tmp.end(), tmp.begin(), (int (*)(int))std::tolower);
 
   return tmp;
+}
+
+const string b = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+string urlDecode(const string &value) {
+  ostringstream res;
+
+  for (string::const_iterator i = value.begin(), n = value.end(); i != n; ++i) {
+    string::value_type c = (*i);
+
+		if (c == '%') {
+			if (distance(i, value.end()) >= 3) {
+				++i;							
+    		string::value_type f = (*i);
+				++i;				
+    		string::value_type s = (*i);
+
+				if ((!isxdigit(f)) || (!isxdigit(s))) {
+					res << c << f << s;
+					continue;
+				}		
+
+				res << (char)stoul(string(&f, 1) + string(&s, 1), 0, 16);
+			}
+		} else {
+	    res << c;
+		}
+  }
+
+  return res.str();
 }

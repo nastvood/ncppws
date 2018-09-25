@@ -9,15 +9,22 @@
 #include "wscrypto.h" 
 #include "NWSFrame.h"
 
+using namespace std;
+
 class NWSClient {
   public:
   	enum State {AwaitingHandshake, HandshakeResponse, Connected};
 
 	private:
 	  int sockfd = -1;
-  	std::vector<char> buf;
+  	vector<char> buf;
 	  bool isDoneData = false;
-  	std::map<std::string, std::string> header;
+  	map<string, string> header;
+
+    map<string, string> param;
+    string requestUri;
+    string host;
+
 	  State state;
 
   public:

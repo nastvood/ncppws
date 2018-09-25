@@ -114,7 +114,6 @@ int NWSServer::eventLoop() {
         NWSClient *client = this->clients[this->events[i].data.fd];
 
         while(1) {
-          ssize_t len = 512;
           char buf[512] = {0};
 
           ssize_t count = read(this->events[i].data.fd, buf, sizeof buf);

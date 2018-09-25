@@ -28,10 +28,25 @@ void NWSClient::parseHeader() {
     auto p = split(this->data(), "\r\n\r\n"); 
     auto headers = nsplit(p.first, "\r\n");
 
-    if (headers.size() == 1) {
-      //FIXME разбор Request-Line 
-    } else if(headers.size() > 1) {
-      //FIXME разбор Request-Line 
+    if(headers.size() > 1) {
+      auto params = nsplit(headers[0], " ");
+
+      if (params.size() > 1) {
+        this->requestUri = params[1];
+
+        if (this->requestUri != "*") {
+          auto p = split(this->requestUri, "?");
+          this->host = p.first;
+
+          auto parts = nsplit(p.second, "&");
+          for(auto &part: parts) {
+            auto p = split(part, "=");
+
+    			  this->header.insert({p.first, urlDecode(p.second)});
+          }
+        } 
+      }
+
       for(auto h = headers.begin() + 1; h != headers.end(); ++h) {
         auto kv = split(*h, ":"); 
         string k = lower(trim(kv.first));
@@ -41,6 +56,8 @@ void NWSClient::parseHeader() {
           cout<<k<<"///"<<v<<endl;
         }
       }
+    } else {
+      //FIXME
     }
   } else if (this->state == Connected) {
     NWSFrame *frame = new NWSFrame(this->data());   
