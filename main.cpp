@@ -3,7 +3,7 @@
 
 int main() {
 
-  NWSServer *server = new NWSServer(8080, 64);
+  nws::NWSServer *server = new nws::NWSServer(8080, 64);
   server->init();
   server->eventLoop();
 

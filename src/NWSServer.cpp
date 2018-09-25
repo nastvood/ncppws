@@ -1,5 +1,7 @@
 #include "NWSServer.h"
 
+using namespace nws;
+
 NWSServer::NWSServer(uint16_t port, unsigned int maxevents) {
   this->port = htons(port);
   this->maxevents = maxevents;
@@ -12,15 +14,17 @@ NWSServer::~NWSServer() {
 }
 
 int NWSServer::init() {  
+  info()<<"init start";
+
   this->sockfd = socket(AF_INET, SOCK_STREAM, 0);
   if (this->sockfd == -1) {
-    perror("socket");
+    error()<<"server socket";
     return errno;
   }
 
   int enable = 1;
   if (setsockopt(this->sockfd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0){
-    perror("setsockopt");
+    error()<<"setsockopt";
     return errno;
   }
 
@@ -29,27 +33,28 @@ int NWSServer::init() {
   addr.sin_port = this -> port;
   addr.sin_addr.s_addr = htonl(INADDR_ANY);
   if (bind(this->sockfd,  (struct sockaddr *)&addr, sizeof(addr)) == -1) {
-    perror("bind");
+    error()<<"bind";
     return errno;
   }
 
   this->epfd = epoll_create1(0);
   if (this->epfd == -1) {
-    perror("epoll_create");
+    error()<<"epoll_create";
     return errno;
   }
 
   listen(this->sockfd, 128);
-  printf("listen\n");
 
   event.data.fd  = this->sockfd;
   event.events = EPOLLIN | EPOLLOUT | EPOLLET;
   if(epoll_ctl(this->epfd, EPOLL_CTL_ADD, this->sockfd, &event) == -1) {
-    perror("epoll_ctl");
+    error()<<"epoll_ctl";
     return errno;
   }
 
   events = (epoll_event *)calloc (this -> maxevents, sizeof event);
+
+  info()<<"init finish";
 
   return 0;
 }
@@ -58,20 +63,19 @@ int NWSServer::eventLoop() {
   if ((this->sockfd < 0) || (this->epfd < 0)) return -1;
   
   while(1) {
-    printf("event_loop\n");
+    info()<<"event loop";
 
     int n = epoll_wait(this->epfd, this->events, this->maxevents, -1);
-    printf("n = %d\n", n);
+    debug()<<"epoll_wait "<<n;
 
     if (n == 0) continue;
     if (n == -1) return errno;
 
     for (int i = 0; i < n; ++i) {
       if ((this->events[i].events & EPOLLERR) || (this->events[i].events & EPOLLHUP) || !(this->events[i].events & EPOLLIN)){
-        printf("evenst err\n");
         continue;
       } else if (this->sockfd == this->events[i].data.fd) {
-        printf("server sock accept start\n");
+        info()<<"server sock accept start";
 
         struct sockaddr inAddr;
         socklen_t inLen = sizeof inAddr;
@@ -98,7 +102,7 @@ int NWSServer::eventLoop() {
           continue;
         }
 
-        printf("accept connection %d host %s port %s\n", sockcl, hbuf, sbuf);
+        debug()<<"accept connection "<<sockcl<<" host "<<hbuf<<" port "<<sbuf;
         
         event.data.fd  = sockcl;
         event.events = EPOLLIN | EPOLLET;
@@ -108,9 +112,9 @@ int NWSServer::eventLoop() {
         }
 
         this->clients.insert({sockcl, new NWSClient(sockcl)});
-        printf("server sock accept end\n");
+        info()<<"server sock accept end";
       } else {
-        printf("server sock data start\n");
+        info()<<"server sock data start";
         NWSClient *client = this->clients[this->events[i].data.fd];
 
         while(1) {
@@ -124,19 +128,22 @@ int NWSServer::eventLoop() {
           if (((count == -1) && (errno == EAGAIN)) || (count == 0)) {
             client->setIsDone(true);
 
-            string resp = client->response();
+            if (client->getState() == NWSClient::AwaitingHandshake) {
+              string resp = client->handshakeResponse();
 
-						cout<<"-----\n"<<resp<<"-------\n"<<endl;
+						  debug()<<resp;
 
-            ssize_t writeLen = write(this->events[i].data.fd, resp.c_str(), resp.size());
-						if (writeLen > -1) {
-							client->setState(NWSClient::Connected);
-						}
+              ssize_t writeLen = write(this->events[i].data.fd, resp.c_str(), resp.size());
+	  					if (writeLen > -1) {
+		  					client->setState(NWSClient::Connected);
+			  			}
+            }
 
             break;
           }
+
           if (count == -1) {
-            printf("read %d \n", errno);
+            debug()<<"read "<<errno;
             break;
           }
         }

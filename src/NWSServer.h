@@ -11,23 +11,28 @@
 #include <netinet/in.h>
 
 #include "NWSClient.h"
+#include "NWSLogger.h"
 
-class NWSServer {
+namespace nws {
 
-  uint16_t port;
-  struct epoll_event event;
-  struct epoll_event *events = NULL;
-  int sockfd = -1;
-  int epfd = -1;
-  unsigned int maxevents;
-  std::map<int, NWSClient *> clients;
+  class NWSServer {
+  
+    uint16_t port;
+    struct epoll_event event;
+    struct epoll_event *events = NULL;
+    int sockfd = -1;
+    int epfd = -1;
+    unsigned int maxevents;
+    std::map<int, NWSClient *> clients;
+  
+    public:
+      NWSServer(uint16_t port, unsigned int maxevents);
+      ~NWSServer();
+  
+      int init();
+      int eventLoop();
+  };
 
-  public:
-    NWSServer(uint16_t port, unsigned int maxevents);
-    ~NWSServer();
-
-    int init();
-    int eventLoop();
-};
+}
 
 #endif 

@@ -8,41 +8,45 @@
 #include "wshelper.h" 
 #include "wscrypto.h" 
 #include "NWSFrame.h"
+#include "NWSLogger.h"
 
-using namespace std;
+namespace nws {
 
-class NWSClient {
-  public:
-  	enum State {AwaitingHandshake, HandshakeResponse, Connected};
+  class NWSClient {
+    public:
+    	enum State {AwaitingHandshake, HandshakeResponse, Connected};
+  
+  	private:
+  	  int sockfd = -1;
+    	std::vector<char> buf;
+  	  bool isDoneData = false;
+    	std::map<string, string> header;
+  
+      std::map<string, string> param;
+      std::string requestUri;
+      std::string host;
+  
+  	  State state;
+  
+    public:
+      NWSClient(int sfd);
+      ~NWSClient();
+  
+      void addData(char *data, int len);
+      void setIsDone(bool isDone);
+  		void setState(State s);
+      std::string genKey();
+  
+      std::string handshakeResponse();
+  
+      const State getState();
+      const char *data(); 
+  
+    protected:    
+      void parseHeader();
+  
+  };
 
-	private:
-	  int sockfd = -1;
-  	vector<char> buf;
-	  bool isDoneData = false;
-  	map<string, string> header;
-
-    map<string, string> param;
-    string requestUri;
-    string host;
-
-	  State state;
-
-  public:
-    NWSClient(int sfd);
-    ~NWSClient();
-
-    void addData(char *data, int len);
-    void setIsDone(bool isDone);
-		void setState(State s);
-    string genKey();
-    char *data(); 
-
-    string response();
-
-  protected:    
-    void parseHeader();
-
-};
+}
 
 #endif
-

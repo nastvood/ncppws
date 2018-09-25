@@ -1,8 +1,10 @@
 #include "NWSClient.h"
 
 using namespace std;
+using namespace nws;
 
 NWSClient::NWSClient(int sfd):sockfd(sfd) {
+  this->state = AwaitingHandshake;
 };
 
 NWSClient::~NWSClient() { 
@@ -19,7 +21,7 @@ void NWSClient::addData(char *data, int len) {
   this->isDoneData = false;       
 };
 
-char *NWSClient::data() {
+const char *NWSClient::data() {
   return &buf[0];
 }
 
@@ -93,7 +95,7 @@ void NWSClient::setIsDone(bool isDone) {
   }
 }
 
-string NWSClient::response() {
+string NWSClient::handshakeResponse() {
   if (this->state == AwaitingHandshake) {
     string resp = "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: " 
       + this->genKey() 
@@ -114,4 +116,8 @@ string NWSClient::response() {
   } else {
     return "";
   }
+}
+
+const NWSClient::State NWSClient::getState() {
+  return this->state; 
 }
