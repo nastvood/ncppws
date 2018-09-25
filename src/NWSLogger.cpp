@@ -26,7 +26,7 @@ namespace nws {
     }
   };
   
-  ostream& NWSLogger::operator()() {
+  ostream& NWSLogger::operator()(int line, const char *file) {
   
     auto nowTime = std::chrono::system_clock::now();
     time_t tm = std::chrono::system_clock::to_time_t(nowTime);
@@ -34,8 +34,9 @@ namespace nws {
     double sc = ms / 1000.;
     int tf  = floor((sc - floor(sc)) * 1000.);
   
-    cout << endl 
+    cout << endl   
       << this->color << this->strLevel 
+      << "\033[0;35m" << "[" << file << ":" << line << "]" 
       << "\033[0;34m" << "[" << put_time(std::localtime(&tm), "%F %T") << "." << tf << "]" 
       << this->color << ": " 
       << "\033[0m";
@@ -43,9 +44,10 @@ namespace nws {
     return cout;
   }
   
-  class NWSLogger debug(NWSLogger::Debug);
-  class NWSLogger warning(NWSLogger::Debug);
-  class NWSLogger error(NWSLogger::Debug);
-  class NWSLogger info(NWSLogger::Info);
+  class NWSLogger _debug(NWSLogger::Debug);
+  class NWSLogger _warning(NWSLogger::Debug);
+  class NWSLogger _error(NWSLogger::Debug);
+  class NWSLogger _info(NWSLogger::Info);
 
 }
+

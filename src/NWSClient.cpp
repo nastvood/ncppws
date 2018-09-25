@@ -55,7 +55,7 @@ void NWSClient::parseHeader() {
         string v = trim(kv.second);
         if (!(k.empty() || (k == ""))) {
     			this->header.insert({k, v});
-          cout<<k<<"///"<<v<<endl;
+          debug()<<"   "<<k<<"///"<<v;
         }
       }
     } else {
