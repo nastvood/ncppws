@@ -66,7 +66,7 @@ int NWSServer::eventLoop() {
     info()<<"event loop";
 
     int n = epoll_wait(this->epfd, this->events, this->maxevents, -1);
-    debug()<<"epoll_wait "<<n;
+    debug()<<"epoll_wait events count: "<<n;
 
     if (n == 0) continue;
     if (n == -1) return errno;

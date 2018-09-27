@@ -63,7 +63,7 @@ void NWSClient::parseHeader() {
     }
   } else if (this->state == Connected) {
     NWSFrame *frame = new NWSFrame(this->data());   
-    frame->print();
+    debug()<<*frame;
 
     delete frame;
   }
@@ -108,9 +108,7 @@ string NWSClient::handshakeResponse() {
      char *packet = nullptr; 
      size_t len = frame.generatePacket(&packet);
 
-     printf("packet %p\n", packet);
      NWSFrame f = NWSFrame(packet);
-     f.print();
 
      return string(packet, len);
   } else {
