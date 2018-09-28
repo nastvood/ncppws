@@ -46,7 +46,7 @@ int NWSServer::init() {
   listen(this->sockfd, 128);
 
   event.data.fd  = this->sockfd;
-  event.events = EPOLLIN | EPOLLOUT | EPOLLET;
+  event.events = EPOLLIN | EPOLLOUT | EPOLLET | EPOLLRDHUP;
   if(epoll_ctl(this->epfd, EPOLL_CTL_ADD, this->sockfd, &event) == -1) {
     error()<<"epoll_ctl";
     return errno;
@@ -68,11 +68,16 @@ int NWSServer::eventLoop() {
     int n = epoll_wait(this->epfd, this->events, this->maxevents, -1);
     debug()<<"epoll_wait events count: "<<n;
 
-    if (n == 0) continue;
-    if (n == -1) return errno;
+    if (n == 0) continue; //timeout
+    if (n == -1) {
+      error()<<"epoll_wait return errno( "<<errno<<"): "<<strerror(errno); 
+    };
 
     for (int i = 0; i < n; ++i) {
-      if ((this->events[i].events & EPOLLERR) || (this->events[i].events & EPOLLHUP) || !(this->events[i].events & EPOLLIN)){
+
+      if ((this->events[i].events & EPOLLERR) 
+        || (this->events[i].events & EPOLLHUP) 
+        || (!(this->events[i].events & EPOLLIN) || (this->events[i].events & EPOLLRDHUP))) {
         continue;
       } else if (this->sockfd == this->events[i].data.fd) {
         info()<<"server sock accept start";
@@ -86,13 +91,13 @@ int NWSServer::eventLoop() {
 
         int flags = fcntl (sockcl, F_GETFL, 0);
         if (flags == -1) {
-          perror("fnctl get");
+          error()<<"fnctl get errono ("<<errno<<"): "<<strerror(errno);
           continue;
         }
 
         flags |= O_NONBLOCK;
         if (fcntl (sockcl, F_SETFL, flags) < 0) {
-          perror("fnctl set");
+          error()<<"fnctl set errono ("<<errno<<"): "<<strerror(errno);
           continue;
         }        
 
@@ -105,47 +110,72 @@ int NWSServer::eventLoop() {
         debug()<<"accept connection "<<sockcl<<" host "<<hbuf<<" port "<<sbuf;
         
         event.data.fd  = sockcl;
-        event.events = EPOLLIN | EPOLLET;
+        event.events = EPOLLIN | EPOLLET | EPOLLRDHUP;
         if(epoll_ctl(this->epfd, EPOLL_CTL_ADD, sockcl, &event) == -1) {
-          perror("epoll_ctl client");
-          return errno;
+          error()<<"epoll_ctl client add set errono ("<<errno<<"): "<<strerror(errno);
+          close(sockcl);
+          continue;
         }
 
         this->clients.insert({sockcl, new NWSClient(sockcl)});
         info()<<"server sock accept end";
       } else {
-        info()<<"server sock data start";
-        NWSClient *client = this->clients[this->events[i].data.fd];
+        if (this->events[i].events & EPOLLRDHUP) {
 
-        while(1) {
-          char buf[512] = {0};
+          int sockcl = this->events[i].data.fd;
+          clients.erase(sockcl);
+          epoll_ctl(this->epfd, EPOLL_CTL_DEL, sockcl, NULL);
+          close(sockcl);
 
-          ssize_t count = read(this->events[i].data.fd, buf, sizeof buf);
-          if (count > 0) {
-            client -> addData(buf, count);
-          }
+          debug()<<"close connect";
+        } else if (this->events[i].events & EPOLLIN) { 
+          info()<<"server sock data start";
+          NWSClient *client = this->clients[this->events[i].data.fd];
 
-          if (((count == -1) && (errno == EAGAIN)) || (count == 0)) {
-            client->setIsDone(true);
-
-            if (client->getState() == NWSClient::AwaitingHandshake) {
-              string resp = client->handshakeResponse();
-
-						  debug()<<resp;
-
-              ssize_t writeLen = write(this->events[i].data.fd, resp.c_str(), resp.size());
-	  					if (writeLen > -1) {
-		  					client->setState(NWSClient::Connected);
-			  			}
+          while(1) {
+            char buf[512] = {0};
+  
+            ssize_t count = read(this->events[i].data.fd, buf, sizeof buf);
+            if (count > 0) {
+              client -> addData(buf, count);
             }
 
-            break;
-          }
+            if (((count == -1) && (errno == EAGAIN)) || (count == 0)) {
+              client->setIsDone(true);
 
-          if (count == -1) {
-            debug()<<"read "<<errno;
-            break;
-          }
+              if (client->getState() == NWSClient::AwaitingHandshake) {
+                string resp = client->handshakeResponse();
+  
+	  					  debug()<<resp;
+  
+                ssize_t writeLen = write(this->events[i].data.fd, resp.c_str(), resp.size());
+	    					if (writeLen > -1) {
+		    					client->setState(NWSClient::Connected);
+			    			}
+              } else if (client->getState() == NWSClient::ClientClosed) {
+                string resp = client->closeResponse();
+                
+                int sockcl = this->events[i].data.fd;
+                clients.erase(sockcl);
+                epoll_ctl(this->epfd, EPOLL_CTL_DEL, sockcl, NULL);
+                close(sockcl);                                
+              } else if (client->getState() == NWSClient::ClientPing) {
+                string resp = client->pongResponse();
+
+                ssize_t writeLen = write(this->events[i].data.fd, resp.c_str(), resp.size());
+	    					if (writeLen > -1) {
+		    					client->setState(NWSClient::Connected);
+			    			}
+              }
+
+              break;
+            }
+
+            if (count == -1) {
+              debug()<<"read "<<errno;
+              break;
+            }
+          } 
         }
       }
     }

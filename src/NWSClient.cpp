@@ -8,7 +8,11 @@ NWSClient::NWSClient(int sfd):sockfd(sfd) {
 };
 
 NWSClient::~NWSClient() { 
-  printf("Client descriptor");
+  if (this->lastFrame) {
+    delete lastFrame;
+  }
+
+  debug()<<"Client descriptor";
 };
 
 void NWSClient::addData(char *data, int len) {
@@ -62,10 +66,13 @@ void NWSClient::parseHeader() {
       //FIXME
     }
   } else if (this->state == Connected) {
-    NWSFrame *frame = new NWSFrame(this->data());   
-    debug()<<*frame;
+    this->lastFrame = new NWSFrame(this->data());
 
-    delete frame;
+    if (lastFrame->opcode == NWSFrame::Close) {
+      this->setState(ClientClosed);
+    }
+
+    debug()<<*this->lastFrame;
   }
 }
 
@@ -102,8 +109,29 @@ string NWSClient::handshakeResponse() {
       + "\r\nUpgrade: websocket\r\n\r\n";
 
     return resp;          
-  } else if (this->state == Connected) {
-     NWSFrame frame = NWSFrame::createClose(1000); 
+  } else {
+    return "";
+  }
+}
+
+string NWSClient::closeResponse() {
+  if ((this->state == ClientClosed) && (this->lastFrame)) {
+     NWSFrame frame = NWSFrame::createClose(this->lastFrame->closeCode); 
+     
+     char *packet = nullptr; 
+     size_t len = frame.generatePacket(&packet);
+
+     NWSFrame f = NWSFrame(packet);
+
+     return string(packet, len);
+  } else {
+    return "";
+  }
+}
+
+string NWSClient::pongResponse() {
+  if ((this->state == ClientPing) && (this->lastFrame)) {
+     NWSFrame frame = NWSFrame::createPong(this->lastFrame->data, this->lastFrame->len); 
      
      char *packet = nullptr; 
      size_t len = frame.generatePacket(&packet);

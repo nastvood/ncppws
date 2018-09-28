@@ -87,14 +87,24 @@ namespace nws {
   }
   
   NWSFrame::~NWSFrame() {
-    if (this->data) delete[] this->data;
+    if (this->data) { 
+      delete[] this->data;
+    }
   }
   
   NWSFrame NWSFrame::createClose(uint16_t closeCode) {
     char maskKey[MASK_KEY_LEN] = {0};
   
     uint16_t code = __builtin_bswap16(closeCode);
-    NWSFrame frame = NWSFrame(true, Close, false, CLOSE_DATA_LEN, maskKey, (char *)&code, closeCode);
+    NWSFrame frame = NWSFrame(true, NWSFrame::Close, false, CLOSE_DATA_LEN, maskKey, (char *)&code, closeCode);
+  
+    return frame;      
+  }
+
+  NWSFrame NWSFrame::createPong(char * data, uint16_t len) {
+    char maskKey[MASK_KEY_LEN] = {0};
+  
+    NWSFrame frame = NWSFrame(true, NWSFrame::Pong, false, len, maskKey, data);
   
     return frame;      
   }
@@ -206,20 +216,25 @@ namespace nws {
   }
   
   ostream &operator<<(std::ostream &out, const NWSFrame &frame) {
-    out << "NWSFrame {" <<" fin: " << boolalpha << frame.fin << noboolalpha 
+    out << "Frame {" <<" fin: " << boolalpha << frame.fin << noboolalpha 
       << "; opcode: " << frame.stringOfOpcode(frame.opcode)
-      << "; mask: "<< boolalpha << frame.mask << noboolalpha
-      << "; len: "<< frame.len 
-      << "; maskKey: "<< hex
-      << (unsigned int)(unsigned char)frame.maskKey[0] <<" "
-      << (unsigned int)(unsigned char)frame.maskKey[1] <<" "
-      << (unsigned int)(unsigned char)frame.maskKey[2] <<" "
-      << (unsigned int)(unsigned char)frame.maskKey[3] << dec 
-      << "; closeCode: "<< frame.closeCode; 
-  
+      << "; data length: "<< frame.len 
+      << "; mask: "<< boolalpha << frame.mask << noboolalpha;
+
+    if (frame.mask) {
+      out << "; maskKey: "<< hex
+        << (unsigned int)(unsigned char)frame.maskKey[0] <<" "
+        << (unsigned int)(unsigned char)frame.maskKey[1] <<" "
+        << (unsigned int)(unsigned char)frame.maskKey[2] <<" "
+        << (unsigned int)(unsigned char)frame.maskKey[3] 
+        << dec;
+    }   
+       
     if (frame.opcode == NWSFrame::Text) {
-      cout << "; data: " << string(frame.data, frame.len);
-    }
+      out << "; data: " << string(frame.data, frame.len);
+    } else if (frame.opcode == NWSFrame::Close) { 
+      out << "; closeCode: "<< frame.closeCode; 
+    }  
       
     out << "};";
   

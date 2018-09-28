@@ -33,6 +33,7 @@ namespace nws {
   
       size_t generatePacket(char **packet);
       static NWSFrame createClose(uint16_t closeCode);
+      static NWSFrame createPong(char * data, uint16_t len);
       static std::string stringOfOpcode(Opcode opcode);
   
       friend std::ostream &operator<<(std::ostream &os, const NWSFrame &frame);

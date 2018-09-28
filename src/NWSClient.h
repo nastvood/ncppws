@@ -14,7 +14,7 @@ namespace nws {
 
   class NWSClient {
     public:
-    	enum State {AwaitingHandshake, HandshakeResponse, Connected};
+    	enum State {AwaitingHandshake, HandshakeResponse, Connected, ClientClosed, ClientPing};
   
   	private:
   	  int sockfd = -1;
@@ -24,9 +24,9 @@ namespace nws {
   
       std::map<string, string> param;
       std::string requestUri;
-      std::string host;
-  
+      std::string host;  
   	  State state;
+      NWSFrame *lastFrame = nullptr;
   
     public:
       NWSClient(int sfd);
@@ -38,6 +38,8 @@ namespace nws {
       std::string genKey();
   
       std::string handshakeResponse();
+      std::string closeResponse();
+      std::string pongResponse();
   
       const State getState();
       const char *data(); 
