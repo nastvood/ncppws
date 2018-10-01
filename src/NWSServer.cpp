@@ -59,6 +59,121 @@ int NWSServer::init() {
   return 0;
 }
 
+void NWSServer::acceptClient() {
+  info()<<"server sock accept start";
+
+  struct sockaddr inAddr;
+  socklen_t inLen = sizeof inAddr;
+  int sockcl = accept(this->sockfd, &inAddr, &inLen);
+  if (sockcl == -1) {
+    error()<<"accept errno ("<<errno<<"): "<<strerror(errno);
+    return;
+  }
+
+  int flags = fcntl (sockcl, F_GETFL, 0);
+  if (flags == -1) {
+    error()<<"fnctl get errno ("<<errno<<"): "<<strerror(errno);
+    return;
+  }
+
+  flags |= O_NONBLOCK;
+  if (fcntl (sockcl, F_SETFL, flags) < 0) {
+    error()<<"fnctl set errno ("<<errno<<"): "<<strerror(errno);
+    return;
+  }        
+
+  char hbuf[NI_MAXHOST];
+  char sbuf[NI_MAXSERV];  
+  if (getnameinfo(&inAddr, inLen, hbuf, NI_MAXHOST, sbuf, NI_MAXSERV, NI_NUMERICHOST | NI_NUMERICSERV) < 0) {
+    error()<<"getnameinfot errno ("<<errno<<"): "<<strerror(errno);
+    return;
+  }
+
+  debug()<<"accept connection "<<sockcl<<" host "<<hbuf<<" port "<<sbuf;
+  
+  event.data.fd  = sockcl;
+  event.events = EPOLLIN | EPOLLET | EPOLLRDHUP;
+  if(epoll_ctl(this->epfd, EPOLL_CTL_ADD, sockcl, &event) == -1) {
+    error()<<"epoll_ctl client add set errono ("<<errno<<"): "<<strerror(errno);
+    close(sockcl);
+    return;
+  }
+
+  this->clients.insert({sockcl, new NWSClient(sockcl)});
+  info()<<"server sock accept end";
+}
+
+void NWSServer::removeClient(int sockcl) {
+  debug()<<"close connect "<<sockcl;
+
+  try {
+    NWSClient *client = this->clients.at(sockcl);
+    clients.erase(sockcl);
+    delete client;
+  } catch (out_of_range &e) {
+    error()<<"Not found client (remove client) "<< sockcl;
+  }
+
+  epoll_ctl(this->epfd, EPOLL_CTL_DEL, sockcl, NULL);
+  close(sockcl);
+}
+
+void NWSServer::readClient(int sockcl) {
+  debug()<<"read client data start "<<sockcl;
+
+  try {
+    NWSClient *client = this->clients.at(sockcl);
+
+    while(1) {
+      char buf[512] = {0};
+    
+      ssize_t count = read(sockcl, buf, sizeof buf);
+      if (count > 0) {
+        client -> addData(buf, count);
+      }
+
+      if (((count == -1) && (errno == EAGAIN)) || (count == 0)) {
+        client->setIsDone(true);
+
+        if (client->getState() == NWSClient::AwaitingHandshake) {                            
+          string resp = client->handshakeResponse();
+    
+          ssize_t writeLen = write(sockcl, resp.c_str(), resp.size());
+    			if (writeLen > -1) {
+    				client->setState(NWSClient::Connected);
+            debug()<<(*client);
+    			}
+        } else if (client->getState() == NWSClient::ClientClosed) {
+          string resp = client->closeResponse();
+          
+          ssize_t writeLen = write(sockcl, resp.c_str(), resp.size());
+    			if (writeLen > -1) {
+            removeClient(sockcl);
+    			}
+        } else if (client->getState() == NWSClient::ClientPing) {
+          string resp = client->pongResponse();
+
+          ssize_t writeLen = write(sockcl, resp.c_str(), resp.size());
+    			if (writeLen > -1) {
+    				client->setState(NWSClient::Connected);
+    			}
+        }
+
+        break;
+      }
+
+      if (count == -1) {
+        debug()<<"read "<<errno;
+        break;
+      }
+    } 
+  } catch (out_of_range &e) {
+    error()<<"Not found client (read client)"<<sockcl;
+  }
+
+  debug()<<"read client data finish " << sockcl;
+}
+
 int NWSServer::eventLoop() {
   if ((this->sockfd < 0) || (this->epfd < 0)) return -1;
   
@@ -80,102 +195,12 @@ int NWSServer::eventLoop() {
         || (!(this->events[i].events & EPOLLIN) || (this->events[i].events & EPOLLRDHUP))) {
         continue;
       } else if (this->sockfd == this->events[i].data.fd) {
-        info()<<"server sock accept start";
-
-        struct sockaddr inAddr;
-        socklen_t inLen = sizeof inAddr;
-        int sockcl = accept(this->sockfd, &inAddr, &inLen);
-        if (sockcl == -1) {
-          continue;
-        }
-
-        int flags = fcntl (sockcl, F_GETFL, 0);
-        if (flags == -1) {
-          error()<<"fnctl get errono ("<<errno<<"): "<<strerror(errno);
-          continue;
-        }
-
-        flags |= O_NONBLOCK;
-        if (fcntl (sockcl, F_SETFL, flags) < 0) {
-          error()<<"fnctl set errono ("<<errno<<"): "<<strerror(errno);
-          continue;
-        }        
-
-        char hbuf[NI_MAXHOST];
-        char sbuf[NI_MAXSERV];  
-        if (getnameinfo(&inAddr, inLen, hbuf, NI_MAXHOST, sbuf, NI_MAXSERV, NI_NUMERICHOST | NI_NUMERICSERV) < 0) {
-          continue;
-        }
-
-        debug()<<"accept connection "<<sockcl<<" host "<<hbuf<<" port "<<sbuf;
-        
-        event.data.fd  = sockcl;
-        event.events = EPOLLIN | EPOLLET | EPOLLRDHUP;
-        if(epoll_ctl(this->epfd, EPOLL_CTL_ADD, sockcl, &event) == -1) {
-          error()<<"epoll_ctl client add set errono ("<<errno<<"): "<<strerror(errno);
-          close(sockcl);
-          continue;
-        }
-
-        this->clients.insert({sockcl, new NWSClient(sockcl)});
-        info()<<"server sock accept end";
+        acceptClient();
       } else {
         if (this->events[i].events & EPOLLRDHUP) {
-
-          int sockcl = this->events[i].data.fd;
-          clients.erase(sockcl);
-          epoll_ctl(this->epfd, EPOLL_CTL_DEL, sockcl, NULL);
-          close(sockcl);
-
-          debug()<<"close connect";
-        } else if (this->events[i].events & EPOLLIN) { 
-          info()<<"server sock data start";
-          NWSClient *client = this->clients[this->events[i].data.fd];
-
-          while(1) {
-            char buf[512] = {0};
-  
-            ssize_t count = read(this->events[i].data.fd, buf, sizeof buf);
-            if (count > 0) {
-              client -> addData(buf, count);
-            }
-
-            if (((count == -1) && (errno == EAGAIN)) || (count == 0)) {
-              client->setIsDone(true);
-
-              if (client->getState() == NWSClient::AwaitingHandshake) {
-                string resp = client->handshakeResponse();
-  
-	  					  debug()<<resp;
-  
-                ssize_t writeLen = write(this->events[i].data.fd, resp.c_str(), resp.size());
-	    					if (writeLen > -1) {
-		    					client->setState(NWSClient::Connected);
-			    			}
-              } else if (client->getState() == NWSClient::ClientClosed) {
-                string resp = client->closeResponse();
-                
-                int sockcl = this->events[i].data.fd;
-                clients.erase(sockcl);
-                epoll_ctl(this->epfd, EPOLL_CTL_DEL, sockcl, NULL);
-                close(sockcl);                                
-              } else if (client->getState() == NWSClient::ClientPing) {
-                string resp = client->pongResponse();
-
-                ssize_t writeLen = write(this->events[i].data.fd, resp.c_str(), resp.size());
-	    					if (writeLen > -1) {
-		    					client->setState(NWSClient::Connected);
-			    			}
-              }
-
-              break;
-            }
-
-            if (count == -1) {
-              debug()<<"read "<<errno;
-              break;
-            }
-          } 
+          removeClient(this->events[i].data.fd);
+        } else if (this->events[i].events & EPOLLIN) {
+          readClient(this->events[i].data.fd);
         }
       }
     }

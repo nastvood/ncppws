@@ -12,6 +12,7 @@
 
 #include "NWSClient.h"
 #include "NWSLogger.h"
+#include "NWSFrame.h"
 
 namespace nws {
 
@@ -31,6 +32,11 @@ namespace nws {
   
       int init();
       int eventLoop();
+
+    private:
+      void acceptClient();      
+      void removeClient(int sockcl); 
+      void readClient(int sockcl);
   };
 
 }

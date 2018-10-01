@@ -17,16 +17,17 @@ namespace nws {
     	enum State {AwaitingHandshake, HandshakeResponse, Connected, ClientClosed, ClientPing};
   
   	private:
-  	  int sockfd = -1;
     	std::vector<char> buf;
   	  bool isDoneData = false;
-    	std::map<string, string> header;
-  
-      std::map<string, string> param;
-      std::string requestUri;
-      std::string host;  
   	  State state;
       NWSFrame *lastFrame = nullptr;
+
+    public:
+  	  int sockfd = -1;
+      std::string requestUri;
+      std::string host;           
+    	std::map<string, string> header;  
+      std::map<string, string> param;
   
     public:
       NWSClient(int sfd);
@@ -43,7 +44,11 @@ namespace nws {
   
       const State getState();
       const char *data(); 
-  
+
+      static std::string stringOfState(State state);
+
+      friend std::ostream &operator<<(std::ostream &os, const NWSClient &client);
+
     protected:    
       void parseHeader();
   
