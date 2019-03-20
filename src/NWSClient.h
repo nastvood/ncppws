@@ -5,6 +5,10 @@
 #include <map>
 #include <iostream>
 
+#include <unistd.h>
+#include <sys/socket.h> 
+#include <openssl/ssl.h>
+
 #include "wshelper.h" 
 #include "wscrypto.h" 
 #include "NWSFrame.h"
@@ -24,13 +28,14 @@ namespace nws {
 
     public:
   	  int sockfd = -1;
+      SSL *ssl = nullptr;
       std::string requestUri;
       std::string host;           
     	std::map<string, string> header;  
       std::map<string, string> param;
   
     public:
-      NWSClient(int sfd);
+      NWSClient(int sfd, SSL *ssl = nullptr);
       ~NWSClient();
   
       void addData(char *data, int len);
@@ -48,6 +53,8 @@ namespace nws {
       static std::string stringOfState(State state);
 
       friend std::ostream &operator<<(std::ostream &os, const NWSClient &client);
+      int write(const std::string &s);
+      int read(void *buf, int num);
 
     protected:    
       void parseHeader();

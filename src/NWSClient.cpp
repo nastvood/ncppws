@@ -4,7 +4,7 @@ using namespace std;
 
 namespace nws {
 
-  NWSClient::NWSClient(int sfd):sockfd(sfd) {
+  NWSClient::NWSClient(int sfd, SSL *ssl):sockfd(sfd),ssl(ssl) {
     this->state = AwaitingHandshake;
   };
   
@@ -12,6 +12,8 @@ namespace nws {
     if (this->lastFrame) {
       delete lastFrame;
     }
+
+    if (this->ssl) SSL_free(this->ssl);
   
     debug()<<"Client descriptor";
   };
@@ -28,6 +30,22 @@ namespace nws {
   
   const char *NWSClient::data() {
     return &buf[0];
+  }
+
+  int NWSClient::write(const std::string &s) {
+    if (this->ssl) {
+      return  SSL_write(this->ssl, s.c_str(), s.size());
+    } else {
+      return ::write(this->sockfd, s.c_str(), s.size());
+    }
+  }
+
+  int NWSClient::read(void *buf, int num) {
+    if (this->ssl) {
+      return  SSL_read(this->ssl, buf, num);
+    } else {
+      return ::read(this->sockfd, buf, num);
+    }
   }
   
   void NWSClient::parseHeader() {

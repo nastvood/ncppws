@@ -2,19 +2,71 @@
 
 using namespace nws;
 
-NWSServer::NWSServer(uint16_t port, unsigned int maxevents) {
+NWSServer::NWSServer(uint16_t port, unsigned int maxevents, const string *sslcert, const string *sslkey) {
   this->port = htons(port);
   this->maxevents = maxevents;
+
+  if (sslcert && sslkey) {
+    this->cert = *sslcert;
+    this->key = *sslkey;
+  }
 }
 
 NWSServer::~NWSServer() {
   if (this->epfd > -1) close(this->epfd);
   if (this->sockfd > -1) close(this->sockfd);  
   if (this->events != NULL) free(this->events);
+  if (this->ctx) SSL_CTX_free(this->ctx);
+}
+
+bool NWSServer::isSSL() {
+  return (!(this->cert.empty() || this->key.empty()));
+}
+
+const string sslErrString() {
+  char buf[256];
+
+  ERR_error_string_n(ERR_get_error(), buf, sizeof(buf));
+
+  return string(buf);
+}
+
+bool NWSServer::initSSL() {
+  if (this->isSSL()) {
+    const SSL_METHOD *method = SSLv23_method();
+    ctx = SSL_CTX_new(method); 
+    if (!ctx) {
+      error()<<"ssl ctx new";
+      return false;
+    }
+
+    SSL_CTX_set_mode(ctx, SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER | SSL_MODE_AUTO_RETRY);
+
+    if (SSL_CTX_use_certificate_chain_file(ctx, "./localhost.crt") <= 0) {
+      error()<<"ssl use cert file ("<<sslErrString()<<")"<<endl;
+      return false;
+    }
+
+    if (SSL_CTX_use_PrivateKey_file(ctx, "./localhost.key", SSL_FILETYPE_PEM) <= 0) {
+      error()<<"ssl use private key file ("<<sslErrString()<<")"<<endl;;
+      return false;
+    }
+
+    if (!SSL_CTX_check_private_key(ctx)) {
+      error()<<"ssl use private key file ("<<sslErrString()<<")"<<endl;
+      return false;
+    }
+  }
+
+  return true;
 }
 
 int NWSServer::init() {  
   info()<<"init start";
+  
+  if (!this->initSSL()) {
+    return -1;
+  }
 
   this->sockfd = socket(AF_INET, SOCK_STREAM, 0);
   if (this->sockfd == -1) {
@@ -99,7 +151,27 @@ void NWSServer::acceptClient() {
     return;
   }
 
-  this->clients.insert({sockcl, new NWSClient(sockcl)});
+  SSL *ssl = nullptr;
+  if (this->isSSL()) {
+    ssl = SSL_new(this->ctx);
+    if (!ssl) {
+      error()<<"ssl new ("<<sslErrString()<<")"<<endl;
+      epoll_ctl(this->epfd, EPOLL_CTL_DEL, sockcl, NULL);
+      close(sockcl);
+      return;
+    }
+
+    SSL_set_fd(ssl, sockcl);
+    if (SSL_accept(ssl) <= 0) {
+      error()<<"ssl accept ("<<sslErrString()<<")"<<endl;
+      epoll_ctl(this->epfd, EPOLL_CTL_DEL, sockcl, NULL);
+      close(sockcl);
+      SSL_free(ssl);
+      return;
+    }
+  }
+
+  this->clients.insert({sockcl, new NWSClient(sockcl, ssl)});
   info()<<"server sock accept end";
 }
 
@@ -114,7 +186,7 @@ void NWSServer::removeClient(int sockcl) {
     error()<<"Not found client (remove client) "<< sockcl;
   }
 
-  epoll_ctl(this->epfd, EPOLL_CTL_DEL, sockcl, NULL);
+  epoll_ctl(this->epfd, EPOLL_CTL_DEL, sockcl, NULL);  
   close(sockcl);
 }
 
@@ -127,7 +199,7 @@ void NWSServer::readClient(int sockcl) {
     while(1) {
       char buf[512] = {0};
     
-      ssize_t count = read(sockcl, buf, sizeof buf);
+      ssize_t count = client->read(buf, sizeof buf);
       if (count > 0) {
         client -> addData(buf, count);
       }
@@ -138,7 +210,7 @@ void NWSServer::readClient(int sockcl) {
         if (client->getState() == NWSClient::AwaitingHandshake) {                            
           string resp = client->handshakeResponse();
     
-          ssize_t writeLen = write(sockcl, resp.c_str(), resp.size());
+          ssize_t writeLen = client->write(resp);
     			if (writeLen > -1) {
     				client->setState(NWSClient::Connected);
             debug()<<(*client);
@@ -146,14 +218,14 @@ void NWSServer::readClient(int sockcl) {
         } else if (client->getState() == NWSClient::ClientClosed) {
           string resp = client->closeResponse();
           
-          ssize_t writeLen = write(sockcl, resp.c_str(), resp.size());
+          ssize_t writeLen = client->write(resp);
     			if (writeLen > -1) {
             removeClient(sockcl);
     			}
         } else if (client->getState() == NWSClient::ClientPing) {
           string resp = client->pongResponse();
 
-          ssize_t writeLen = write(sockcl, resp.c_str(), resp.size());
+          ssize_t writeLen = client->write(resp);
     			if (writeLen > -1) {
     				client->setState(NWSClient::Connected);
     			}

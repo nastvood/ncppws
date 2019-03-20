@@ -10,6 +10,9 @@
 #include <sys/socket.h> 
 #include <netinet/in.h>
 
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+
 #include "NWSClient.h"
 #include "NWSLogger.h"
 #include "NWSFrame.h"
@@ -25,9 +28,13 @@ namespace nws {
     int epfd = -1;
     unsigned int maxevents;
     std::map<int, NWSClient *> clients;
+
+    SSL_CTX *ctx;
+    string cert;
+    string key;
   
     public:
-      NWSServer(uint16_t port, unsigned int maxevents);
+      NWSServer(uint16_t port, unsigned int maxevents, const string *sslcert = nullptr, const string *sslkey = nullptr);
       ~NWSServer();
   
       int init();
@@ -37,6 +44,8 @@ namespace nws {
       void acceptClient();      
       void removeClient(int sockcl); 
       void readClient(int sockcl);
+      bool isSSL();
+      bool initSSL();
   };
 
 }
