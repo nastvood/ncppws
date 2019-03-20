@@ -8,41 +8,52 @@
 #include "wshelper.h" 
 #include "wscrypto.h" 
 #include "NWSFrame.h"
+#include "NWSLogger.h"
 
-using namespace std;
+namespace nws {
 
-class NWSClient {
-  public:
-  	enum State {AwaitingHandshake, HandshakeResponse, Connected};
+  class NWSClient {
+    public:
+    	enum State {AwaitingHandshake, HandshakeResponse, Connected, ClientClosed, ClientPing};
+  
+  	private:
+    	std::vector<char> buf;
+  	  bool isDoneData = false;
+  	  State state;
+      NWSFrame *lastFrame = nullptr;
 
-	private:
-	  int sockfd = -1;
-  	vector<char> buf;
-	  bool isDoneData = false;
-  	map<string, string> header;
+    public:
+  	  int sockfd = -1;
+      std::string requestUri;
+      std::string host;           
+    	std::map<string, string> header;  
+      std::map<string, string> param;
+  
+    public:
+      NWSClient(int sfd);
+      ~NWSClient();
+  
+      void addData(char *data, int len);
+      void setIsDone(bool isDone);
+  		void setState(State s);
+      std::string genKey();
+  
+      std::string handshakeResponse();
+      std::string closeResponse();
+      std::string pongResponse();
+  
+      const State getState();
+      const char *data(); 
 
-    map<string, string> param;
-    string requestUri;
-    string host;
+      static std::string stringOfState(State state);
 
-	  State state;
+      friend std::ostream &operator<<(std::ostream &os, const NWSClient &client);
 
-  public:
-    NWSClient(int sfd);
-    ~NWSClient();
+    protected:    
+      void parseHeader();
+  
+  };
 
-    void addData(char *data, int len);
-    void setIsDone(bool isDone);
-		void setState(State s);
-    string genKey();
-    char *data(); 
-
-    string response();
-
-  protected:    
-    void parseHeader();
-
-};
+}
 
 #endif
-
