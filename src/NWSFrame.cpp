@@ -53,7 +53,7 @@ namespace nws {
     } else {
       uint64_t *s = (uint64_t *)&buf[offset];
       this->len = __builtin_bswap64(*s);
-      offset += 4;
+      offset += 8;
     }
   
     if (this->mask) {
